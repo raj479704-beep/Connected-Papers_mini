@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mini Connected Papers</title>
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<style>
+:root {
+  --bg0:#070b14; --bg1:#0d1526; --panel:rgba(13,21,38,.88);
+  --line:rgba(148,163,184,.14); --text:#e2e8f0; --dim:#94a3b8; --faint:#64748b;
+  --accent:#38bdf8; --accent2:#818cf8; --seed:#f59e0b;
+}
+* { box-sizing:border-box; }
+html,body { height:100%; }
+body {
+  margin:0; color:var(--text); overflow:hidden;
+  font:14px/1.45 -apple-system,"Segoe UI",Inter,system-ui,sans-serif;
+  background:
+    radial-gradient(1200px 700px at 75% -10%, rgba(56,189,248,.10), transparent 60%),
+    radial-gradient(900px 600px at -10% 110%, rgba(129,140,248,.10), transparent 60%),
+    linear-gradient(160deg, var(--bg0), var(--bg1));
+}
+body::before {
+  content:''; position:fixed; inset:0; z-index:0; pointer-events:none;
+  background-image:radial-gradient(rgba(148,163,184,.06) 1px, transparent 1px);
+  background-size:26px 26px;
+}
+#topbar {
+  position:fixed; top:0; left:0; right:0; height:56px; z-index:30;
+  display:flex; align-items:center; gap:14px; padding:0 18px;
+  background:rgba(7,11,20,.72); backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--line);
+}
+#brand { font-weight:700; letter-spacing:.2px; font-size:15px; white-space:nowrap; }
+#brand .dot { color:var(--accent); }
+#searchwrap { position:relative; flex:1; max-width:620px; }
+#search {
+  width:100%; height:36px; border-radius:10px; border:1px solid var(--line);
+  background:rgba(30,41,59,.6); color:var(--text); padding:0 80px 0 14px;
+  font-size:13.5px; outline:none; transition:border .15s, box-shadow .15s;
+}
+#search:focus { border-color:rgba(56,189,248,.55); box-shadow:0 0 0 3px rgba(56,189,248,.15); }
+#go {
+  position:absolute; right:5px; top:5px; height:26px; border:0; border-radius:7px;
+  background:linear-gradient(135deg, var(--accent), var(--accent2)); color:#04121f;
+  font-weight:700; padding:0 14px; cursor:pointer;
+}
+#go:hover { filter:brightness(1.1); }
+#opts { display:flex; align-items:center; gap:12px; color:var(--dim); font-size:12.5px; white-space:nowrap; }
+#opts label { display:flex; align-items:center; gap:5px; cursor:pointer; }
+#opts select { background:rgba(30,41,59,.8); color:var(--text); border:1px solid var(--line);
+  border-radius:6px; padding:2px 4px; font-size:12.5px; }
+#dl { border:1px solid var(--line); background:rgba(30,41,59,.6); color:var(--dim);
+  border-radius:8px; padding:5px 10px; cursor:pointer; font-size:12.5px; }
+#dl:hover { color:var(--text); border-color:rgba(56,189,248,.5); }
+#stats {
+  position:fixed; top:64px; right:14px; z-index:15; max-width:420px;
+  background:var(--panel); backdrop-filter:blur(14px); border:1px solid var(--line);
+  border-radius:10px; padding:7px 12px; font-size:12px; color:var(--dim);
+}
+#stats b { color:var(--text); }
+#graph { position:fixed; inset:56px 0 0 0; z-index:1; }
+#graph svg { user-select:none; -webkit-user-select:none; display:block; }
+#sidebar {
+  position:fixed; top:56px; left:0; bottom:0; width:350px; z-index:20;
+  background:var(--panel); backdrop-filter:blur(14px); border-right:1px solid var(--line);
+  transform:translateX(-105%); transition:transform .25s ease; overflow-y:auto;
+}
+#sidebar.open { transform:none; }
+#detail {
+  position:fixed; top:56px; right:0; bottom:0; width:370px; z-index:20;
+  background:var(--panel); backdrop-filter:blur(14px); border-left:1px solid var(--line);
+  transform:translateX(105%); transition:transform .25s ease; overflow-y:auto; padding:20px;
+}
+#detail.open { transform:none; }
+.sidehead {
+  position:sticky; top:0; display:flex; align-items:center; justify-content:space-between;
+  padding:12px 14px; background:rgba(13,21,38,.95); border-bottom:1px solid var(--line);
+  font-size:13.5px; z-index:2;
+}
+.x { border:0; background:none; color:var(--faint); cursor:pointer; font-size:15px; }
+.x:hover { color:var(--text); }
+.paper { padding:11px 14px; border-bottom:1px solid var(--line); cursor:pointer; }
+.paper:hover { background:rgba(56,189,248,.07); }
+.paper h3 { margin:0 0 3px; font-size:13.5px; font-weight:600; line-height:1.35; }
+.meta { color:var(--faint); font-size:12px; }
+.badge {
+  display:inline-block; margin-left:6px; padding:1px 8px; border-radius:99px; font-size:11px;
+  background:rgba(56,189,248,.12); color:var(--accent); border:1px solid rgba(56,189,248,.25);
+}
+#detail h2 { font-size:16px; line-height:1.35; margin:8px 0 6px; }
+.chips { display:flex; flex-wrap:wrap; gap:6px; margin:10px 0; }
+.chip {
+  padding:3px 10px; border-radius:99px; font-size:11.5px; color:var(--dim);
+  background:rgba(30,41,59,.6); border:1px solid var(--line);
+}
+.chip.hot { color:var(--accent); border-color:rgba(56,189,248,.35); }
+.abs { color:var(--dim); font-size:13px; margin:12px 0; }
+.btnrow { display:flex; gap:8px; margin-top:14px; }
+.btn {
+  flex:1; text-align:center; text-decoration:none; border-radius:9px; padding:9px 10px;
+  font-size:13px; font-weight:600; cursor:pointer; border:1px solid var(--line);
+  background:rgba(30,41,59,.6); color:var(--text);
+}
+.btn.primary {
+  background:linear-gradient(135deg, var(--accent), var(--accent2)); color:#04121f; border:0;
+}
+.btn:hover { filter:brightness(1.12); }
+#tooltip {
+  position:fixed; z-index:50; display:none; max-width:360px; pointer-events:none;
+  background:rgba(13,21,38,.96); border:1px solid var(--line); border-radius:10px;
+  padding:10px 12px; font-size:12.5px; line-height:1.5; color:var(--text);
+  box-shadow:0 12px 32px rgba(0,0,0,.5);
+}
+#selbar {
+  position:fixed; bottom:18px; left:50%; transform:translateX(-50%); z-index:35;
+  display:flex; align-items:center; gap:10px; max-width:92vw;
+  background:var(--panel); backdrop-filter:blur(14px); border:1px solid var(--line);
+  border-radius:12px; padding:9px 14px; box-shadow:0 12px 32px rgba(0,0,0,.45);
+}
+#selcount { font-weight:700; font-size:13px; color:#4ade80; white-space:nowrap; }
+#selchips { display:flex; gap:6px; overflow-x:auto; max-width:46vw; }
+.selpill {
+  display:inline-flex; align-items:center; white-space:nowrap; font-size:12px;
+  background:rgba(74,222,128,.10); border:1px solid rgba(74,222,128,.35); color:#bbf7d0;
+  border-radius:99px; padding:2px 10px;
+}
+.selpill .x { font-size:11px; }
+#dlbib, #clearsel { border-radius:9px; padding:7px 12px; font-size:12.5px; font-weight:700; cursor:pointer; }
+#dlbib { border:0; background:linear-gradient(135deg, #4ade80, #22d3ee); color:#04121f; }
+#dlbib:hover { filter:brightness(1.1); }
+#clearsel { border:1px solid var(--line); background:rgba(30,41,59,.6); color:var(--dim); }
+#clearsel:hover { color:var(--text); }
+#empty {
+  position:fixed; inset:56px 0 0 0; z-index:5; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:10px; color:var(--dim); pointer-events:none;
+}
+#overlay {
+  position:fixed; inset:0; z-index:40; display:none; align-items:center; justify-content:center;
+  background:rgba(7,11,20,.55); backdrop-filter:blur(3px);
+}
+#overlay.on { display:flex; }
+.spinner {
+  width:44px; height:44px; border-radius:50%; border:3px solid rgba(56,189,248,.2);
+  border-top-color:var(--accent); animation:spin .9s linear infinite;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+<header id="topbar">
+  <div id="brand">Mini<span class="dot">·</span>Connected Papers</div>
+  <div id="searchwrap">
+    <input id="search" placeholder="Search keywords…  or paste a DOI / arXiv id / W-id" autocomplete="off">
+    <button id="go">Go</button>
+  </div>
+  <div id="opts">
+    <label title="Also include papers related to the top neighbors (2nd hop)">
+      <input type="checkbox" id="depth2" checked> 2nd-hop
+    </label>
+    <label>papers
+      <select id="pool">
+        <option>20</option><option>40</option><option selected>80</option><option>120</option>
+      </select>
+    </label>
+    <button id="dl" hidden>⬇ CSV</button>
+  </div>
+</header>
+
+<aside id="sidebar">
+  <div class="sidehead"><b id="sh-title">Results</b><button class="x" id="close-side">✕</button></div>
+  <div id="results"></div>
+</aside>
+
+<aside id="detail"><button class="x" id="close-detail" style="float:right">✕</button><div id="detail-body"></div></aside>
+
+<div id="stats" hidden></div>
+<div id="graph"></div>
+<div id="tooltip"></div>
+
+<div id="selbar" hidden>
+  <span id="selcount"></span>
+  <span id="selchips"></span>
+  <button id="dlbib">⬇ BibTeX (.bib)</button>
+  <button id="clearsel">Clear</button>
+</div>
+
+<div id="empty">
+  <div style="font-size:44px">🕸️</div>
+  <div style="font-size:16px; color:var(--text)">Search a topic to find papers</div>
+  <div style="font-size:13px">then click one to explore its citation network</div>
+  <div style="font-size:12px; margin-top:6px">double-click any node to make it the new seed · shift+click to select for BibTeX · drag to rearrange</div>
+</div>
+
+<div id="overlay"><div style="text-align:center">
+  <div class="spinner" style="margin:0 auto 14px"></div>
+  <div id="overlay-msg">Building graph…</div>
+  <div style="color:var(--faint); font-size:12.5px; margin-top:6px">this usually takes 30–90 s · re-clicking the same seed is instant (cached)</div>
+</div></div>
+
+<script>
+let G = null;
+let selected = new Set();
+let nodeById = new Map();
+let detailNode = null;
+const $ = id => document.getElementById(id);
+const esc = s => (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function api(path, opts) {
+  return fetch(path, opts).then(r => {
+    if (!r.ok) return r.json().then(j => { throw new Error(j.error || r.statusText); },
+      () => { throw new Error(r.statusText); });
+    return r.json();
+  });
+}
+
+function yearColor(y, ymin, ymax) {
+  const t = ymax > ymin ? (y - ymin) / (ymax - ymin) : 0.5;
+  const a = [0x33, 0x41, 0x55], b = [0x7d, 0xd3, 0xfc];
+  const c = a.map((v, i) => Math.round(v + (b[i] - v) * t));
+  return '#' + c.map(v => v.toString(16).padStart(2, '0')).join('');
+}
+function nodeSize(c) { return 6 + 1.6 * Math.min(Math.sqrt(c || 0), 20); }
+
+const DIR_TEXT = { 'cites seed': 'cites the seed', 'cited by seed': 'cited by the seed',
+                   'both': 'in both directions', '2nd hop': '2nd hop (neighbor\u2019s neighbor)' };
+
+function tooltipHTML(n) {
+  const ab = n.abstract ? esc(n.abstract.slice(0, 260)) + (n.abstract.length > 260 ? '…' : '')
+                        : '<i>no abstract</i>';
+  return `<div style="max-width:340px">
+    <b>${esc(n.title)}</b><br>${n.year || '—'} · ${esc(n.venue || 'n/a')}<br>
+    ${n.citations} citations · ${esc(DIR_TEXT[n.direction] || n.direction)}<br>
+    similarity to seed: <b>${n.sim_to_seed}</b> · shared refs: ${n.shared_refs} · co-cited: ${n.cocited_with_seed}<br>
+    <span style="color:#94a3b8">${ab}</span><br>
+    <span style="color:#64748b">click = details · double-click = make seed</span>
+  </div>`;
+}
+function seedTooltipHTML(seed) {
+  return `<div style="max-width:340px"><b>SEED</b><br>${esc(seed.title)}<br>${seed.year} · `
+    + esc(seed.venue || 'n/a') + '<br>' + seed.citations + ' citations<br>'
+    + `<span style="color:#94a3b8">${esc(seed.abstract ? seed.abstract.slice(0, 260) : '')}</span></div>`;
+}
+
+// ------------------------------------------------------------- search
+let searchTimer = null, lastResults = [];
+function looksLikeId(q) {
+  return /^W\d+$/.test(q) || /10\.\d{4,9}\//.test(q) || /^\d{4}\.\d{4,5}$/.test(q) || /^arxiv:/i.test(q);
+}
+function onSearchSubmit() {
+  const q = $('search').value.trim();
+  if (!q) return;
+  if (looksLikeId(q)) { buildGraph(q); return; }
+  searchPapers(q);
+}
+async function searchPapers(q) {
+  $('sh-title').textContent = `Results for “${q}”`;
+  $('results').innerHTML = '<div class="meta" style="padding:16px">Searching…</div>';
+  $('sidebar').classList.add('open');
+  try {
+    const d = await api('/api/search?q=' + encodeURIComponent(q) + '&per_page=25');
+    lastResults = d.results;
+    if (!d.results.length) {
+      $('results').innerHTML = '<div class="meta" style="padding:16px">No papers found. Try different keywords.</div>';
+      return;
+    }
+    $('results').innerHTML = d.results.map(r => `
+      <div class="paper" data-id="${r.id}">
+        <h3>${esc(r.title)}</h3>
+        <div class="meta">${r.first_author ? esc(r.first_author) + ' · ' : ''}${r.year || '—'} · ${esc(r.venue || '')}
+          <span class="badge">${r.citations} citations</span></div>
+      </div>`).join('');
+    document.querySelectorAll('.paper').forEach(el => {
+      el.onclick = () => {
+        const r = lastResults.find(x => x.id === el.dataset.id);
+        if (r) buildGraph(r.id, r.title);
+      };
+    });
+  } catch (e) {
+    $('results').innerHTML = `<div class="meta" style="padding:16px">Error: ${esc(e.message)}</div>`;
+  }
+}
+
+// ------------------------------------------------------------- graph (d3-force)
+let sim = null;
+
+function render() {
+  $('overlay').classList.remove('on');
+  $('empty').style.display = 'none';
+  $('dl').hidden = false;
+  const { seed, nodes, edges, stats } = G;
+  const ymin = stats.min_year, ymax = stats.max_year;
+
+  $('stats').hidden = false;
+  $('stats').innerHTML = `<b>${stats.pool}</b> papers · <b>${edges.length}</b> links · `
+    + `${ymin}–${ymax} · <b>seed:</b> ${esc(seed.title).slice(0, 70)}…`;
+
+  if (sim) sim.stop();
+  selected.clear();
+  $('selbar').hidden = true;
+
+  const W = $('graph').clientWidth, H = $('graph').clientHeight;
+  const graphNodes = [
+    Object.assign({}, seed, {
+      visId: 'seed', isSeed: true,
+      baseLabel: 'SEED · ' + (seed.first_author ? seed.first_author + ' ' : '') + (seed.year || ''),
+      color: '#f59e0b',
+    }),
+    ...nodes.map((n, i) => Object.assign({}, n, {
+      visId: 'n' + i, isSeed: false,
+      baseLabel: ((n.first_author || '') + ' ' + (n.year || '')).trim(),
+      color: yearColor(n.year || ymin, ymin, ymax),
+    })),
+  ];
+  graphNodes.forEach(n => { n.r = nodeSize(n.citations); });
+  const byOaId = new Map(graphNodes.map(n => [n.openalex_id, n]));
+  const graphEdges = edges
+    .map(e => {
+      const s = byOaId.get(e.a), t = byOaId.get(e.b);
+      return (s && t && s !== t) ? { source: s, target: t, sim: e.similarity } : null;
+    })
+    .filter(Boolean);
+
+  nodeById = byOaId;
+  const adj = new Map(graphNodes.map(n => [n.openalex_id, new Set([n.openalex_id])]));
+  for (const e of graphEdges) {
+    adj.get(e.source.openalex_id).add(e.target.openalex_id);
+    adj.get(e.target.openalex_id).add(e.source.openalex_id);
+  }
+
+  d3.select('#graph').html('');
+  const svg = d3.select('#graph').append('svg')
+    .attr('width', '100%').attr('height', '100%')
+    .attr('viewBox', [0, 0, W, H]);
+
+  const defs = svg.append('defs');
+  const glow = defs.append('filter').attr('id', 'glow')
+    .attr('x', '-80%').attr('y', '-80%').attr('width', '260%').attr('height', '260%');
+  glow.append('feGaussianBlur').attr('stdDeviation', 8).attr('result', 'b');
+  const merge = glow.append('feMerge');
+  merge.append('feMergeNode').attr('in', 'b');
+  merge.append('feMergeNode').attr('in', 'SourceGraphic');
+
+  const root = svg.append('g');
+
+  const zoom = d3.zoom().scaleExtent([0.15, 6])
+    .on('zoom', e => root.attr('transform', e.transform));
+  svg.call(zoom).on('dblclick.zoom', null);
+
+  const link = root.append('g').attr('stroke-linecap', 'round')
+    .selectAll('line').data(graphEdges).join('line')
+    .attr('stroke', '#38bdf8')
+    .attr('stroke-width', e => 0.6 + 4.5 * e.sim)
+    .attr('stroke-opacity', e => 0.06 + 0.5 * e.sim);
+
+  const node = root.append('g').selectAll('g').data(graphNodes).join('g')
+    .attr('class', 'node')
+    .style('cursor', 'pointer');
+
+  node.append('circle')
+    .attr('r', n => n.r)
+    .attr('fill', n => n.isSeed ? '#f59e0b' : n.color)
+    .attr('stroke', n => n.isSeed ? '#fde68a' : 'rgba(255,255,255,.35)')
+    .attr('stroke-width', n => n.isSeed ? 2 : 1)
+    .attr('filter', n => n.isSeed ? 'url(#glow)' : null);
+
+  node.append('text')
+    .text(n => n.baseLabel)
+    .attr('text-anchor', 'middle')
+    .attr('dy', n => n.r + 13)
+    .attr('font-size', n => n.isSeed ? 13 : 11)
+    .attr('font-weight', n => n.isSeed ? 700 : 500)
+    .attr('font-family', n => n.isSeed ? 'ui-monospace, monospace' : 'inherit')
+    .attr('fill', n => n.isSeed ? '#fde68a' : '#cbd5e1')
+    .style('pointer-events', 'none')
+    .style('paint-order', 'stroke')
+    .attr('stroke', 'rgba(7,11,20,.85)')
+    .attr('stroke-width', 3)
+    .attr('stroke-linejoin', 'round');
+
+  const badge = node.append('g').attr('class', 'selbadge')
+    .attr('transform', n => `translate(${n.r * 0.85},${-n.r * 0.85})`)
+    .style('visibility', 'hidden')
+    .style('pointer-events', 'none');
+  badge.append('circle')
+    .attr('r', 6.5)
+    .attr('fill', '#4ade80')
+    .attr('stroke', 'rgba(7,11,20,.9)')
+    .attr('stroke-width', 1.5);
+  badge.append('text')
+    .text('✓')
+    .attr('text-anchor', 'middle')
+    .attr('dy', 2.6)
+    .attr('font-size', 8.5)
+    .attr('font-weight', 800)
+    .attr('fill', '#052e16');
+
+  sim = d3.forceSimulation(graphNodes)
+    .force('link', d3.forceLink(graphEdges)
+      .distance(e => 60 + 340 * (1 - e.sim))
+      .strength(e => 0.05 + 0.75 * e.sim))
+    .force('charge', d3.forceManyBody().strength(n => -(120 + n.r * 18)))
+    .force('collide', d3.forceCollide(n => n.r + 10).iterations(2))
+    .force('x', d3.forceX(W / 2).strength(0.05))
+    .force('y', d3.forceY(H / 2).strength(0.05));
+
+  sim.on('tick', () => {
+    link.attr('x1', e => e.source.x).attr('y1', e => e.source.y)
+        .attr('x2', e => e.target.x).attr('y2', e => e.target.y);
+    node.attr('transform', n => `translate(${n.x},${n.y})`);
+  });
+
+  // auto-fit once the layout settles
+  let fitted = false;
+  const fitView = () => {
+    const xs = graphNodes.map(n => n.x), ys = graphNodes.map(n => n.y);
+    const minX = Math.min(...xs) - 70, maxX = Math.max(...xs) + 70;
+    const minY = Math.min(...ys) - 70, maxY = Math.max(...ys) + 70;
+    const scale = Math.max(0.2, Math.min(1.8, 0.92 * Math.min(W / (maxX - minX), H / (maxY - minY))));
+    svg.transition().duration(650)
+      .call(zoom.transform, d3.zoomIdentity
+        .translate(W / 2 - scale * (minX + maxX) / 2, H / 2 - scale * (minY + maxY) / 2)
+        .scale(scale));
+  };
+  sim.on('end.fit', () => { if (!fitted) { fitted = true; fitView(); } });
+
+  const tip = d3.select('#tooltip');
+  node
+    .on('mouseover', (ev, n) => {
+      node.select('text').filter(d => d === n)
+        .text(n.title.length > 80 ? n.title.slice(0, 80) + '…' : n.title)
+        .attr('font-size', 13).attr('fill', '#f8fafc').attr('font-weight', 600);
+      const nb = adj.get(n.openalex_id);
+      node.transition().duration(120).style('opacity', d => nb.has(d.openalex_id) ? 1 : 0.15);
+      link.transition().duration(120).style('opacity',
+        e => (e.source === n || e.target === n) ? 1 : 0.06);
+      tip.html(n.isSeed ? seedTooltipHTML(seed) : tooltipHTML(n)).style('display', 'block');
+      moveTip(ev);
+    })
+    .on('mousemove', ev => moveTip(ev))
+    .on('mouseout', (ev, n) => {
+      node.select('text').filter(d => d === n)
+        .text(n.baseLabel)
+        .attr('font-size', d => d.isSeed ? 13 : 11)
+        .attr('font-weight', d => d.isSeed ? 700 : 500)
+        .attr('fill', d => d.isSeed ? '#fde68a' : '#cbd5e1');
+      node.transition().duration(160).style('opacity', 1);
+      link.transition().duration(160).style('opacity', 1);
+      tip.style('display', 'none');
+    })
+    .on('click', (ev, n) => {
+      ev.stopPropagation();
+      if (ev.shiftKey) { toggleSelect(n.openalex_id); return; }
+      detailNode = n;
+      showDetail(n.isSeed ? seed : nodes[+n.visId.slice(1)], n.isSeed ? 'seed' : n.visId);
+    })
+    .on('dblclick', (ev, n) => {
+      ev.stopPropagation();
+      if (!n.isSeed) buildGraph(n.openalex_id, n.title);
+    });
+
+  function moveTip(ev) {
+    const tw = 360, th = tip.node().offsetHeight || 120;
+    let x = ev.clientX + 14, y = ev.clientY + 14;
+    if (x + tw > window.innerWidth) x = ev.clientX - tw - 14;
+    if (y + th > window.innerHeight) y = ev.clientY - th - 14;
+    tip.style('left', x + 'px').style('top', y + 'px');
+  }
+
+  node.call(d3.drag()
+    .on('start', (ev, n) => { if (!ev.active) sim.alphaTarget(0.25).restart(); n.fx = n.x; n.fy = n.y; })
+    .on('drag', (ev, n) => { n.fx = ev.x; n.fy = ev.y; })
+    .on('end', (ev, n) => { if (!ev.active) sim.alphaTarget(0); n.fx = null; n.fy = null; }));
+
+  svg.on('click', () => hideDetail());
+}
+
+// ------------------------------------------------------------- detail
+function showDetail(n, visId) {
+  const isSeed = visId === 'seed';
+  const ab = n.abstract ? esc(n.abstract.slice(0, 700)) : '<i>no abstract available</i>';
+  $('detail-body').innerHTML = `
+    <div class="meta">${n.year || '—'} · ${esc(n.venue || 'n/a')} · <b>${n.citations}</b> citations
+      ${isSeed ? ' · <span style="color:var(--seed)">SEED</span>' : ''}</div>
+    <h2>${esc(n.title)}</h2>
+    ${isSeed ? '' : `<div class="chips">
+      <span class="chip hot">sim to seed ${n.sim_to_seed}</span>
+      <span class="chip">${esc(DIR_TEXT[n.direction] || n.direction)}</span>
+      <span class="chip">${n.shared_refs} shared refs</span>
+      <span class="chip">${n.cocited_with_seed} co-cited</span>
+    </div>`}
+    <p class="abs">${ab}</p>
+    <div class="btnrow">
+      <a class="btn primary" href="${esc(n.url)}" target="_blank" rel="noopener">Open paper ↗</a>
+      ${isSeed ? '' : `<button class="btn" id="reseed">Use as new seed</button>`}
+    </div>
+    ${isSeed ? '' : `<div class="btnrow">
+      <button class="btn" id="selbtn"
+        style="${selected.has(n.openalex_id) ? 'border-color:#4ade80;color:#4ade80' : ''}">
+        ${selected.has(n.openalex_id) ? '✓ In selection — click to remove' : '＋ Add to selection (BibTeX)'}</button>
+    </div>`}
+  `;
+  if (!isSeed) {
+    $('reseed').onclick = () => buildGraph(n.openalex_id, n.title);
+    $('selbtn').onclick = () => toggleSelect(n.openalex_id);
+  }
+  $('detail').classList.add('open');
+}
+function hideDetail() { $('detail').classList.remove('open'); }
+
+// ------------------------------------------------------------- selection / bibtex
+function toggleSelect(id) {
+  if (selected.has(id)) selected.delete(id);
+  else selected.add(id);
+  refreshSelection();
+}
+
+function refreshSelection() {
+  d3.selectAll('#graph g.node').each(function (n) {
+    const sel = selected.has(n.openalex_id);
+    d3.select(this).select('circle')
+      .attr('stroke', sel ? '#4ade80' : (n.isSeed ? '#fde68a' : 'rgba(255,255,255,.35)'))
+      .attr('stroke-width', sel ? 3 : (n.isSeed ? 2 : 1));
+    d3.select(this).select('g.selbadge').style('visibility', sel ? 'visible' : 'hidden');
+  });
+  const bar = $('selbar');
+  if (!selected.size) { bar.hidden = true; return; }
+  bar.hidden = false;
+  $('selcount').textContent = selected.size + ' selected';
+  $('selchips').innerHTML = [...selected].map(id => {
+    const n = nodeById.get(id);
+    const lbl = n ? ((n.first_author || '') + ' ' + (n.year || '')).trim() : id;
+    return `<span class="selpill">${esc(lbl)}<button class="x" data-id="${id}" style="margin-left:5px">✕</button></span>`;
+  }).join('');
+  document.querySelectorAll('#selchips .x').forEach(b => {
+    b.onclick = () => toggleSelect(b.dataset.id);
+  });
+  const btn = $('selbtn');
+  if (btn && detailNode && $('detail').classList.contains('open')) {
+    const has = selected.has(detailNode.openalex_id);
+    btn.textContent = has ? '✓ In selection — click to remove' : '＋ Add to selection (BibTeX)';
+    btn.style.borderColor = has ? '#4ade80' : '';
+    btn.style.color = has ? '#4ade80' : '';
+  }
+}
+
+function slug(s) { return (s || 'refs').slice(0, 40).replace(/[^a-z0-9]+/gi, '_').toLowerCase(); }
+
+// ------------------------------------------------------------- CSV
+function csvCell(v) {
+  v = String(v == null ? '' : v);
+  return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+}
+function downloadCSV() {
+  if (!G) return;
+  const rows = [['rank', 'sim_to_seed', 'shared_refs_with_seed', 'cocited_with_seed', 'direction',
+                 'year', 'title', 'venue', 'citations', 'url', 'openalex_id']];
+  G.nodes.forEach((n, i) => rows.push([i + 1, n.sim_to_seed, n.shared_refs, n.cocited_with_seed,
+                                       n.direction, n.year, n.title, n.venue, n.citations,
+                                       n.url, 'W' + n.openalex_id]));
+  const blob = new Blob([rows.map(r => r.map(csvCell).join(',')).join('\n')],
+                        { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'connected_' + G.seed.title.slice(0, 40).replace(/[^a-z0-9]+/gi, '_').toLowerCase() + '.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ------------------------------------------------------------- graph build
+async function buildGraph(query, title) {
+  $('overlay-msg').textContent = 'Building graph' + (title ? ' for “' + title.slice(0, 58) + (title.length > 58 ? '…' : '') + '”' : '…');
+  $('overlay').classList.add('on');
+  try {
+    G = await api('/api/graph', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, pool: +$('pool').value,
+                             depth: $('depth2').checked ? 2 : 1, min_sim: 0.12 }) });
+    render();
+  } catch (e) {
+    $('overlay-msg').textContent = 'Error: ' + e.message;
+    setTimeout(() => $('overlay').classList.remove('on'), 2600);
+  }
+}
+
+// ------------------------------------------------------------- wiring
+$('go').onclick = onSearchSubmit;
+$('search').addEventListener('keydown', e => { if (e.key === 'Enter') onSearchSubmit(); });
+$('search').addEventListener('input', () => {
+  const q = $('search').value.trim();
+  if (looksLikeId(q)) return;
+  clearTimeout(searchTimer);
+  if (q.length >= 4) searchTimer = setTimeout(() => searchPapers(q), 400);
+});
+$('close-side').onclick = () => $('sidebar').classList.remove('open');
+$('close-detail').onclick = hideDetail;
+$('dl').onclick = downloadCSV;
+$('dlbib').onclick = () => {
+  if (!G || !selected.size) return;
+  window.location.href = '/api/bibtex?ids=' + [...selected].join(',') + '&name=' + slug(G.seed.title);
+};
+$('clearsel').onclick = () => { selected.clear(); refreshSelection(); };
+</script>
+</body>
+</html>
