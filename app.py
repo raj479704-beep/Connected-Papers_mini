@@ -10,12 +10,47 @@ import json
 import os
 import re
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 import pipeline as P
 
 STATE = {"cache": {}, "lock": threading.Lock(), "client": None}
+
+HISTORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "history.json")
+HISTORY_MAX = 30
+
+
+def load_history():
+    try:
+        with open(HISTORY_FILE) as fh:
+            data = json.load(fh)
+            return data if isinstance(data, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def save_history(entries):
+    with open(HISTORY_FILE, "w") as fh:
+        json.dump(entries, fh, indent=1, ensure_ascii=False)
+
+
+def record_history(result, opts):
+    entry = {
+        "ts": int(time.time()),
+        "query": result["seed"]["openalex_id"],
+        "title": result["seed"]["title"],
+        "year": result["seed"]["year"],
+        "first_author": result["seed"]["first_author"],
+        "pool": result["stats"]["pool"],
+        "edges": result["stats"]["edges"],
+        "depth": opts["depth"],
+    }
+    with STATE["lock"]:
+        entries = [e for e in load_history() if e.get("query") != entry["query"]]
+        entries.insert(0, entry)
+        save_history(entries[:HISTORY_MAX])
 
 
 def do_search(q, per_page=20):
@@ -46,13 +81,16 @@ def do_graph(req):
             "min_sim": float(req.get("min_sim", 0.12)), "max_citers": 300, "max_edges": 500}
     key = (query, opts["pool"], opts["depth"], opts["min_sim"])
     with STATE["lock"]:
-        if key in STATE["cache"]:
-            return STATE["cache"][key]
+        cached = STATE["cache"].get(key)
+    if cached is not None:
+        record_history(cached, opts)
+        return cached
     result = P.build(STATE["client"], query, **opts)
     with STATE["lock"]:
         STATE["cache"][key] = result
         if len(STATE["cache"]) > 6:
             STATE["cache"].pop(next(iter(STATE["cache"])))
+    record_history(result, opts)
     return result
 
 
@@ -99,6 +137,22 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(data)
             except Exception as err:  # noqa: BLE001
                 self._send(500, {"error": str(err)})
+        elif u.path == "/api/history":
+            with STATE["lock"]:
+                self._send(200, {"items": load_history()})
+        else:
+            self._send(404, {"error": "not found"})
+
+    def do_DELETE(self):
+        u = urlparse(self.path)
+        if u.path == "/api/history":
+            with STATE["lock"]:
+                entries = load_history()
+                keep = parse_qs(u.query).get("id", [None])[0]
+                entries = ([e for e in entries if e.get("query") != keep]
+                           if keep else [])
+                save_history(entries)
+                self._send(200, {"items": entries})
         else:
             self._send(404, {"error": "not found"})
 

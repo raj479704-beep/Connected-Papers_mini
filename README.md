@@ -35,6 +35,11 @@ Workflow:
    - "⬇ BibTeX (.bib)" downloads a `.bib` file with **only the selected
      papers** (authors, journal, volume/issue, pages, year, DOI) via
      `GET /api/bibtex?ids=W1,W2&name=slug`
+5. **History**: the 🕘 History button lists your recently built graphs
+   (persisted to `history.json`, survives restarts, newest first, max 30).
+   Click an entry to reopen it (instant when still in the in-memory cache);
+   🗑 removes one, "Clear all" wipes the list.
+   API: `GET /api/history`, `DELETE /api/history?id=W…` (or no id = all).
 
 ## CLI
 
@@ -84,6 +89,7 @@ Visualization mapping (as in Connected Papers):
 | `pipeline.py` | shared logic: OpenAlex client, fetching, scoring |
 | `connected.py` | CLI wrapper (writes html/csv artifacts) |
 | `out/` | CLI output artifacts |
+| `history.json` | web-UI history (created at runtime, git-ignored) |
 
 ## Notes & limits
 
