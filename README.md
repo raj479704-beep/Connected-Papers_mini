@@ -96,7 +96,7 @@ Visualization mapping (as in Connected Papers):
 - Without a key, requests share a small **free daily budget** with everyone
   on your IP. Get a free key with its own budget at
   <https://openalex.org/settings/api> and pass `--api-key`
-  (or set `OPENALEX_API_KEY`).
+  (or set `OPENALEX_API_KEY`). After that, just do 'python3 app.py --api-key KEY'.
 - Citing-paper sets are capped at 600 per paper (seed: 300), so co-citation
   is slightly undercounted for extremely cited seeds.
 - A typical build makes ~80–120 API calls (10 rps throttle), so expect
